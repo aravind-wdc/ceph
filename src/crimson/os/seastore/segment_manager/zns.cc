@@ -132,11 +132,13 @@ static seastar::future<size_t> get_zone_capacity(
 	BLKOPENZONE, 
 	&first_zone_range
       ).then([&](int ret){
+        zr.hdr->sector = 0;
+        zr.hdr->nr_zones = nr_zones;
 	return device.ioctl(BLKREPORTZONE, zr.hdr);
       }).then([&] (int ret){
 	return device.ioctl(BLKRESETZONE, &first_zone_range);
       }).then([&](int ret){
-	return seastar::make_ready_future<size_t>(zr.hdr->zones[0].wp);
+	return seastar::make_ready_future<size_t>(zr.hdr->zones[0].capacity);
       });
     }
   );
