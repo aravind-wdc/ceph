@@ -3,22 +3,13 @@
 
 #include "crimson/os/seastore/segment_manager.h"
 #include "crimson/os/seastore/segment_manager/block.h"
-#include "crimson/common/log.h"
-
+#include "crimson/os/seastore/logging.h"
 
 #ifdef HAVE_ZNS
 #include "crimson/os/seastore/segment_manager/zns.h"
 #endif
 
-namespace{
-
-#ifdef HAVE_ZNS
-seastar::logger &logger(){
-  return crimson::get_logger(ceph_subsys_seastore_device);
-}
-#endif
-
-}
+SET_SUBSYS(seastore_device);
 
 namespace crimson::os::seastore {
 
@@ -55,6 +46,7 @@ seastar::future<crimson::os::seastore::SegmentManagerRef>
 SegmentManager::get_segment_manager(
   const std::string &device)
 {
+LOG_PREFIX(SegmentManager::get_segment_manager);
 #ifdef HAVE_ZNS
   return seastar::do_with(
     static_cast<size_t>(0),
@@ -71,7 +63,7 @@ SegmentManager::get_segment_manager(
 	  });
       }).then([&](auto ret) -> crimson::os::seastore::SegmentManagerRef {
 	crimson::os::seastore::SegmentManagerRef sm;
-	logger().error("NR_ZONES: {}", nr_zones);
+	INFO("Found {} zones.", nr_zones);
 	if (nr_zones != 0) {
 	  return std::make_unique<
 	    segment_manager::zns::ZNSSegmentManager
