@@ -1044,6 +1044,9 @@ SegmentCleaner::mount_ret SegmentCleaner::mount()
       segments.end(),
       [this, FNAME, &segment_set](auto& it) {
 	auto segment_id = it.first;
+        if (segment_id.device_segment_id() >= segments.get_num_segments() - 1)
+          return mount_ertr::now();
+
 	return sm_group->read_segment_header(
 	  segment_id
 	).safe_then([segment_id, this, FNAME, &segment_set](auto header) {
