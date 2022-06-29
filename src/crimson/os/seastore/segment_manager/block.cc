@@ -430,6 +430,11 @@ Segment::write_ertr::future<> BlockSegment::write(
   return manager.segment_write(paddr, bl);
 }
 
+Segment::write_ertr::future<> BlockSegment::write_segment_tail(
+  seastore_off_t offset, ceph::bufferlist bl) {
+  return write(offset, bl);
+}
+
 Segment::close_ertr::future<> BlockSegmentManager::segment_close(
     segment_id_t id, seastore_off_t write_pointer)
 {

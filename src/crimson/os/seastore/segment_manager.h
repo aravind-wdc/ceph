@@ -127,6 +127,8 @@ public:
     >;
   virtual write_ertr::future<> write(
     seastore_off_t offset, ceph::bufferlist bl) = 0;
+  virtual write_ertr::future<> write_segment_tail(
+    seastore_off_t offset, ceph::bufferlist bl) = 0;
 
   virtual ~Segment() {}
 };

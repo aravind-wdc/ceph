@@ -414,7 +414,7 @@ ZNSSegmentManager::open_ertr::future<SegmentRef> ZNSSegmentManager::open(
       );
     }
   ).safe_then([=] {
-    DEBUG("segment open successful");
+    DEBUG("segment {}, open successful", id);
     return open_ertr::future<SegmentRef>(
       open_ertr::ready_future_marker{},
       SegmentRef(new ZNSSegment(*this, id))
@@ -589,6 +589,17 @@ Segment::write_ertr::future<> ZNSSegment::write(
   
   write_pointer = offset + bl.length();
   return manager.segment_write(paddr_t::make_seg_paddr(id, offset), bl);
+}
+
+Segment::write_ertr::future<> ZNSSegment::write_segment_tail(
+  seastore_off_t offset, ceph::bufferlist bl)
+{
+  LOG_PREFIX(ZNSSegment::write_segment_tail);
+  DEBUG("Write to segment {} at wp {}", id, write_pointer);
+  if (write_pointer + bl.length() > manager.metadata.segment_size)
+    return crimson::ct_error::enospc::make();
+
+  return write(write_pointer, bl);
 }
 
 }

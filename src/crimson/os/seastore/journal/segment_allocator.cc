@@ -242,7 +242,7 @@ SegmentAllocator::close_segment()
   bl.append(bp);
 
   assert(bl.length() == sm_group.get_rounded_tail_length());
-  return seg_to_close->write(
+  return seg_to_close->write_segment_tail(
     sm_group.get_segment_size() - sm_group.get_rounded_tail_length(),
     bl
   ).safe_then([seg_to_close=std::move(seg_to_close)] {
