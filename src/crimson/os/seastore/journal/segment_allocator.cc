@@ -245,7 +245,8 @@ SegmentAllocator::close_segment()
   return seg_to_close->write_segment_tail(
     sm_group.get_segment_size() - sm_group.get_rounded_tail_length(),
     bl
-  ).safe_then([seg_to_close=std::move(seg_to_close)] {
+  ).safe_then([FNAME, seg_to_close=std::move(seg_to_close)] {
+    INFO("arav: write_segment_tail returned safely");
     return seg_to_close->close();
   }).handle_error(
     close_segment_ertr::pass_further{},

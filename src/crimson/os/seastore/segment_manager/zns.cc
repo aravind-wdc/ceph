@@ -430,7 +430,8 @@ blk_close_zone_ret blk_close_zone(
   blk_zone_range &range)
 {
   return device.ioctl(
-    BLKCLOSEZONE, 
+    //BLKCLOSEZONE, 
+    BLKFINISHZONE,
     &range
   ).then_wrapped([=](auto f) -> blk_open_zone_ret{
     if (f.failed()) {
@@ -483,10 +484,13 @@ SegmentManager::read_ertr::future<> ZNSSegmentManager::read(
     return crimson::ct_error::invarg::make();
   }
   
-  if (seg_addr.get_segment_off() + len > metadata.zone_size) {
-    ERROR("invalid offset {}, len {}",
+  if (seg_addr.get_segment_off() + len > (metadata.zone_size << SECT_SHIFT)) {
+    ERROR("invalid offset {}, len {} get_segment_off ={}, zone_size = {}, zone-size in bytes = {}",
       addr,
-      len);
+      len,
+      seg_addr.get_segment_off(),
+      metadata.zone_size,
+      metadata.zone_size << SECT_SHIFT);
     return crimson::ct_error::invarg::make();
   }
   return do_read(
@@ -508,6 +512,7 @@ Segment::close_ertr::future<> ZNSSegmentManager::segment_close(
 	metadata.zone_size, 
 	metadata.block_size, 
 	metadata.first_segment_offset);
+      //return blk_finish_zone(
       return blk_close_zone(
 	device, 
 	range
@@ -578,6 +583,7 @@ Segment::write_ertr::future<> ZNSSegment::write(
   seastore_off_t offset, ceph::bufferlist bl)
 {
   LOG_PREFIX(ZNSSegment::write);
+  DEBUG("arav: Write to segment {} at wp {} offset {} len {}", id, write_pointer, offset, bl.length());
   if (offset != write_pointer || offset % manager.metadata.block_size != 0) {
     ERROR("Invalid segment write on segment {} to offset {}",
       id,
@@ -591,15 +597,71 @@ Segment::write_ertr::future<> ZNSSegment::write(
   return manager.segment_write(paddr_t::make_seg_paddr(id, offset), bl);
 }
 
+Segment::write_ertr::future<> ZNSSegment::write_padd(
+  seastore_off_t offset, unsigned int &n_wr_req, size_t padd_bytes)
+{
+  LOG_PREFIX(ZNSSegment::write_padd);
+
+  DEBUG("Write to segment {} at wp {}", id, write_pointer);
+  DEBUG("arav: wp = {} seg_total_size= {}, seg-slba={} n_wr_req = {}",
+        write_pointer, manager.metadata.segment_size, id.device_segment_id() * manager.metadata.segment_size, n_wr_req);
+  
+
+  
+  //n_wr_req++;
+  return crimson::repeat([&n_wr_req, FNAME, this] {
+    bufferptr bp(ceph::buffer::create_page_aligned(4096));
+    bp.zero();
+    bufferlist padd_bl;
+    padd_bl.append(bp);
+    return write(write_pointer, padd_bl).safe_then([&n_wr_req, FNAME, this] () {
+      //n_wr_req--;
+      DEBUG("3Write complete. next write to segment {} at wp {} ", id, write_pointer);
+      if (write_pointer == manager.metadata.segment_size - (size_t)4096)
+        return write_ertr::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
+      else
+        return write_ertr::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
+    }).handle_error(
+     write_ertr::pass_further{},
+     crimson::ct_error::assert_all{
+       "Write error in ZNSSegment::write_padd"
+     });
+    }).safe_then([] () {
+      return write_ertr::now();
+    }).handle_error(
+     write_ertr::pass_further{},
+     crimson::ct_error::assert_all{
+       "Repeat error in ZNSSegment::write_padd"
+     });
+}
+
 Segment::write_ertr::future<> ZNSSegment::write_segment_tail(
   seastore_off_t offset, ceph::bufferlist bl)
 {
   LOG_PREFIX(ZNSSegment::write_segment_tail);
   DEBUG("Write to segment {} at wp {}", id, write_pointer);
+  DEBUG("arav: wp = {} seg_total_size= {}, tail-size={}, seg-slba={} padding size = {}",
+        write_pointer, manager.metadata.segment_size, bl.length(), id.device_segment_id() * manager.metadata.segment_size, manager.metadata.segment_size - write_pointer - bl.length());
+  
   if (write_pointer + bl.length() > manager.metadata.segment_size)
     return crimson::ct_error::enospc::make();
 
-  return write(write_pointer, bl);
+  size_t padding_bytes = manager.metadata.segment_size - write_pointer - bl.length();
+  assert(padding_bytes % 4096 == 0);
+  unsigned int n_wr_req = padding_bytes / 4096;
+
+  return write_padd(write_pointer, n_wr_req, padding_bytes).safe_then([=] () {
+  DEBUG("Completed padding, Write tail to segment {} at offset {} , wp {}", id, offset, write_pointer);
+  return write(offset, bl).safe_then([FNAME, this] () {
+      DEBUG("tail info write complete to segment {} curr wp at {}", id, write_pointer);
+      return write_ertr::now();
+     }).handle_error(
+     write_ertr::pass_further{},
+     crimson::ct_error::assert_all{
+       "Invalid error in ZNSSegment::write_segment_tail"
+     });
+    });
+
 }
 
 }

@@ -399,7 +399,7 @@ SegmentManagerGroup::find_journal_segment_headers()
     {
       LOG_PREFIX(SegmentManagerGroup::find_journal_segment_headers);
       auto device_id = sm->get_device_id();
-      auto num_segments = sm->get_num_segments();
+      auto num_segments = sm->get_num_segments() - 1;
       INFO("processing {} with {} segments",
            device_id_printer_t{device_id}, num_segments);
       return crimson::do_for_each(
